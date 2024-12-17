@@ -1,95 +1,107 @@
-import sys
-import z3
-import re
-import heapq
+import math, sys, re
 from collections import defaultdict, Counter, deque
-from sympy.solvers.solveset import linsolve
-import pyperclip as pc
-def pr(s):
-    print(s)
-    pc.copy(s)
-sys.setrecursionlimit(10**6)
-DIRS = [(-1,0),(0,1),(1,0),(0,-1)] # up right down left
-def ints(s):
-    return [int(x) for x in re.findall(r'-?\d+', s)]
 
-ans = 0
-D = open(r"D:\Coding\ADVENT-OF-CODE\2024\Day17\input.txt").read().strip()
-
-
-regs, program = D.split('\n\n')
-A,B,C = ints(regs)
-program = program.split(':')[1].strip().split(',')
-program = [int(x) for x in program]
-#print(A,B,C,program)
-
-
-def run(Ast, part2):
-    def getCombo(x):
-        if x in [0,1,2,3]:
-            return x
-        if x==4:
-            return A
-        if x==5:
-            return B
-        if x==6:
-            return C
-        return -1
-    A = Ast
-    B = 0
-    C = 0
-    ip = 0
-    out = []
+def read_lines(f):
     while True:
-        if ip>=len(program):
-            return out
-        cmd = program[ip]
-        op = program[ip+1]
-        combo = getCombo(op)
+        line = f.readline()
+        if not line:
+            break
+        line = line.rstrip('\n')  # Strip the newline character
+        yield line
 
-        #print(ip, len(program), cmd)
-        if cmd == 0:
-            A = A // 2**combo
-            ip += 2
-        elif cmd == 1:
-            B = B ^ op
-            ip += 2
-        elif cmd == 2:
-            B = combo%8
-            ip += 2
-        elif cmd == 3:
-            if A != 0:
-                ip = op
-            else:
-                ip += 2
-        elif cmd == 4:
-            B = B ^ C
-            ip += 2
-        elif cmd == 5:
-            out.append(int(combo%8))
-            if part2 and out[len(out)-1] != program[len(out)-1]:
-                return out
-            ip += 2
-        elif cmd == 6:
-            B = A // 2**combo
-            ip += 2
-        elif cmd == 7:
-            C = A // 2**combo
-            ip += 2
+def emulate1(operator, operand, reg, out, ip):
+    def get_combo(operand):
+        if operand in range(4):
+            return operand
+        elif operand == 4:
+            return reg['A']
+        elif operand == 5:
+            return reg['B']
+        elif operand == 6:
+            return reg['C']
+        else:
+            raise ValueError
 
-part1 = run(A, False)
-print(','.join([str(x) for x in part1]))
+    if operator == 0:  # adv
+        reg['A'] = reg['A'] // (2 ** get_combo(operand))
+    elif operator == 1:  # bxl
+        reg['B'] ^= operand
+    elif operator == 2:  # bst
+        reg['B'] = get_combo(operand) % 8
+    elif operator == 3:  # jnz
+        if reg['A'] != 0:
+            return operand
+    elif operator == 4:  # bxc
+        reg['B'] ^= reg['C']
+    elif operator == 5:  # out
+        out.append(get_combo(operand) % 8)
+    elif operator == 6:  # bdv
+        reg['B'] = reg['A'] // (2 ** get_combo(operand))
+    elif operator == 7:  # cdv
+        reg['C'] = reg['A'] // (2 ** get_combo(operand))
+    else:
+        raise ValueError
+    return ip + 2
 
-Ast = 0
-best = 0
-while True:
-    Ast += 1
-    #A = Ast * 8**5 + 0o36017
-    A = Ast * 8**9 + 0o676236017
-    out = run(A, True)
-    if out == program:
-        print(A)
-        break
-    elif len(out) > best:
-        #print(A, oct(A), best, len(program))
-        best = len(out)
+def read(lines):
+    l = iter(lines)
+    reg = {
+        'A': int(re.fullmatch(r'Register A: (\d+)', next(l)).groups()[0]),
+        'B': int(re.fullmatch(r'Register B: (\d+)', next(l)).groups()[0]),
+        'C': int(re.fullmatch(r'Register C: (\d+)', next(l)).groups()[0]),
+    }
+    assert next(l) == ''
+    program_text = re.fullmatch(r'Program: (.+)', next(l)).groups()[0]
+    program = list(map(int, program_text.split(',')))
+    return reg, program
+
+def run1(reg, program):
+    out = []
+    ip = 0
+    while True:
+        try:
+            operator, operand = program[ip], program[ip + 1]
+        except IndexError:
+            break
+        ip = emulate1(operator, operand, reg, out, ip)
+    return out
+
+def part_1(lines):
+    reg, program = read(lines)
+    out = run1(reg, program)
+    return ','.join(map(str, out))
+
+def part_2(lines):
+    reg, program = read(lines)
+
+    def recu(program, reg, level, base):
+        for i in range(8):
+            r = reg.copy()
+            r['A'] = base + 8 ** (level) * i
+            if r['A'] < 0:
+                continue
+            out = run1(r, program)
+            if out == program:
+                return base + 8 ** (level) * i
+            if len(out) == len(program) and out[level:] == program[level:]:
+                ans = recu(program, reg, level - 1, base + 8 ** (level) * i)
+                if ans is not None:
+                    return ans
+        return None
+
+    s = recu(program, reg, len(program) - 1, 0)
+    assert s is not None
+    return s
+
+def main():
+    # Replace the file path with your desired input file location
+    input_file_path = r"D:\Coding\ADVENT-OF-CODE\2024\Day17\input.txt"
+
+    with open(input_file_path, 'r') as f:
+        lines = list(read_lines(f))
+
+    print("Part 1:", part_1(lines))
+    print("Part 2:", part_2(lines))
+
+if __name__ == '__main__':
+    main()
